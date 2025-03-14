@@ -79,3 +79,28 @@ async def send_emails(body: ProspectData):
     except Exception as e:
         raise HTTPException(
             status_code=500, detail=f"Error sending emails: {str(e)}")
+
+# Accepts email, industry, company_name, contact_name, and engagement_level
+
+
+@app.post("/api/applications")
+# async def send_emails(request: Request, body: ProspectData):
+async def send_emails(body: ProspectData):
+    try:
+        print(body)
+        prospect_data = body.model_dump()
+        {
+            "email": "jane.smith@healthcore.com",
+            "industry": "healthcare",
+            "company_name": "HealthCore Solutions",
+            "contact_name": "Jane Smith",
+            "engagement_level": "low (no prior interaction)"
+        }
+
+        # Invoke the chain with the prospect data
+        result = email_chain.invoke(prospect_data)
+
+        return {"status": True, "body": body, "data": result}
+    except Exception as e:
+        raise HTTPException(
+            status_code=500, detail=f"Error sending emails: {str(e)}")

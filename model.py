@@ -3,6 +3,12 @@ from langchain.prompts import ChatPromptTemplate
 from langchain.schema.output_parser import StrOutputParser
 from langchain.schema.runnable import RunnableBranch
 from langchain_groq import ChatGroq
+from sendgrid import SendGridAPIClient
+from sendgrid.helpers.mail import Mail
+from twilio.rest import Client
+from twilio.base.exceptions import TwilioRestException
+import os
+from typing import Optional
 import os
 
 # Load environment variables
@@ -17,6 +23,13 @@ llm = ChatGroq(
     timeout=None,
     max_retries=2,
 )
+
+# Initialize Sendgrid
+sendgrid_client = SendGridAPIClient(os.getenv("SENDGRID_API_KEY"))
+FROM_EMAIL = os.getenv("SENDGRID_FROM_EMAIL")
+twilio_client = Client(os.getenv("TWILIO_ACCOUNT_SID"),
+                       os.getenv("TWILIO_AUTH_TOKEN"))
+TWILIO_PHONE = os.getenv("TWILIO_PHONE_NUMBER")
 
 # Prompt template for generating personalized cold emails
 email_template = ChatPromptTemplate.from_messages([

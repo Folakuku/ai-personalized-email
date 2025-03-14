@@ -58,6 +58,7 @@ pyasn1_modules==0.4.1
 pydantic==2.10.6
 pydantic-settings==2.8.1
 pydantic_core==2.27.2
+pymongo==4.11.2
 pyparsing==3.2.1
 python-dotenv==1.0.1
 PyYAML==6.0.2

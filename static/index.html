@@ -1,0 +1,356 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Sigma Insurance Email Sender</title>
+    <style>
+        body { font-family: Arial, sans-serif; margin: 20px; max-width: 800px; margin-left: auto; margin-right: auto; }
+        h1, h2 { color: #333; }
+        #emailForm { display: flex; flex-direction: column; gap: 20px; }
+        .prospect-panel, .company-info, .call-section { border: 1px solid #ccc; padding: 15px; border-radius: 5px; display: flex; flex-direction: column; gap: 10px; }
+        label { font-weight: bold; }
+        input, select, textarea, button { padding: 8px; font-size: 16px; }
+        textarea { height: 80px; resize: vertical; }
+        button { background-color: #007bff; color: white; border: none; cursor: pointer; }
+        button:hover { background-color: #0056b3; }
+        #addMore { background-color: #28a745; margin-top: 10px; }
+        #addMore:hover { background-color: #218838; }
+        #submitBtn { background-color: #007bff; margin-top: 20px; }
+        #response { margin-top: 20px; padding: 10px; border: 1px solid #ccc; white-space: pre-wrap; }
+        .call-section { margin-top: 20px; }
+        #callScript { white-space: pre-wrap; margin-top: 10px; padding: 10px; border: 1px dashed #ccc; }
+        .error { color: red; }
+    </style>
+</head>
+<body>
+    <h1>Sigma Insurance Email Sender</h1>
+    <form id="emailForm">
+        <div class="company-info">
+            <label for="companyInfo">Company Information:</label>
+            <textarea id="companyInfo" name="companyInfo" required placeholder="e.g., Sigma Insurance\n123 Main St, City, State\nPhone: (123) 456-7890\nEmail: info@sigmainc.com"></textarea>
+            <label for="representative">Company Representative:</label>
+            <input type="text" id="representative" name="representative" required placeholder="e.g., Jane Doe, Insurance Agent">
+            <label for="insurancePlan">Custom Insurance Plan (Optional):</label>
+            <textarea id="insurancePlan" name="insurancePlan" placeholder="e.g., Custom Tech Plan, $2,000/year, includes cyber and liability"></textarea>
+        </div>
+        <div id="prospectContainer">
+            <div class="prospect-panel">
+                <label for="email-0">Email:</label>
+                <input type="email" id="email-0" name="email-0" required>
+                <label for="phone-0">Phone Number (Optional):</label>
+                <input type="tel" id="phone-0" name="phone-0" placeholder="e.g., +1234567890">
+                <label for="industry-0">Industry:</label>
+                <select id="industry-0" name="industry-0" required onchange="updatePlanOptions(this, 'plan-0')">
+                    <option value="">Select an Industry</option>
+                    <option value="Technology">Technology</option>
+                    <option value="Finance">Finance</option>
+                    <option value="Health">Health</option>
+                </select>
+                <label for="company_name-0">Company Name:</label>
+                <input type="text" id="company_name-0" name="company_name-0" required>
+                <label for="contact_name-0">Contact Name:</label>
+                <input type="text" id="contact_name-0" name="contact_name-0" required>
+                <label for="engagement_level-0">Engagement Level:</label>
+                <select id="engagement_level-0" name="engagement_level-0" onchange="updatePlanOptions(document.getElementById('industry-0'), 'plan-0')">
+                    <option value="">Select (defaults to Low)</option>
+                    <option value="Low">Low</option>
+                    <option value="Medium">Medium</option>
+                    <option value="High">High</option>
+                </select>
+                <label for="plan-0">Recommended Plan:</label>
+                <select id="plan-0" name="plan-0">
+                    <option value="">Select Industry and Engagement Level</option>
+                </select>
+            </div>
+        </div>
+        <button type="button" id="addMore">Add More</button>
+        <button type="submit" id="submitBtn">Send Emails</button>
+        <button type="button" onclick="fetchProspectsForCall()">Fetch Prospects for Call</button>
+    </form>
+
+    <div id="response"></div>
+
+    <div class="call-section">
+        <h2>Cold Call Script</h2>
+        <label for="callProspect">Select Prospect:</label>
+        <select id="callProspect" onchange="generateCallScript()">
+            <option value="">Select a Prospect</option>
+        </select>
+        <label for="callOutcome">Call Outcome:</label>
+        <select id="callOutcome">
+            <option value="">Select Outcome</option>
+            <option value="Interested">Interested</option>
+            <option value="No Answer">No Answer</option>
+            <option value="Not Interested">Not Interested</option>
+        </select>
+        <button type="button" onclick="logCallOutcome()">Log Call</button>
+        <button type="button" onclick="makeCall()">Make Call</button>
+        <div id="callScript"></div>
+    </div>
+
+    <script>
+        let panelCount = 1;
+        let prospects = [];
+
+        async function fetchPlans() {
+            const response = await fetch('/plans');
+            return await response.json();
+        }
+
+        async function updatePlanOptions(industrySelect, planSelectId) {
+            const industry = industrySelect.value;
+            const engagement = document.getElementById(`engagement_level-${planSelectId.split('-')[1]}`).value || "Low";
+            const planSelect = document.getElementById(planSelectId);
+            planSelect.innerHTML = '<option value="">Loading...</option>';
+            if (!industry) {
+                planSelect.innerHTML = '<option value="">Select Industry</option>';
+                return;
+            }
+            const data = await fetchPlans();
+            const plans = data.plans[industry][engagement];
+            planSelect.innerHTML = `<option value="">Default: ${plans.name} (${plans.cost})</option>`;
+        }
+
+        document.getElementById('addMore').addEventListener('click', () => {
+            const container = document.getElementById('prospectContainer');
+            const newPanel = document.createElement('div');
+            newPanel.className = 'prospect-panel';
+            newPanel.innerHTML = `
+                <label for="email-${panelCount}">Email:</label>
+                <input type="email" id="email-${panelCount}" name="email-${panelCount}" required>
+                <label for="phone-${panelCount}">Phone Number (Optional):</label>
+                <input type="tel" id="phone-${panelCount}" name="phone-${panelCount}" placeholder="e.g., +1234567890">
+                <label for="industry-${panelCount}">Industry:</label>
+                <select id="industry-${panelCount}" name="industry-${panelCount}" required onchange="updatePlanOptions(this, 'plan-${panelCount}')">
+                    <option value="">Select an Industry</option>
+                    <option value="Technology">Technology</option>
+                    <option value="Finance">Finance</option>
+                    <option value="Health">Health</option>
+                </select>
+                <label for="company_name-${panelCount}">Company Name:</label>
+                <input type="text" id="company_name-${panelCount}" name="company_name-${panelCount}" required>
+                <label for="contact_name-${panelCount}">Contact Name:</label>
+                <input type="text" id="contact_name-${panelCount}" name="contact_name-${panelCount}" required>
+                <label for="engagement_level-${panelCount}">Engagement Level:</label>
+                <select id="engagement_level-${panelCount}" name="engagement_level-${panelCount}" onchange="updatePlanOptions(document.getElementById('industry-${panelCount}'), 'plan-${panelCount}')">
+                    <option value="">Select (defaults to Low)</option>
+                    <option value="Low">Low</option>
+                    <option value="Medium">Medium</option>
+                    <option value="High">High</option>
+                </select>
+                <label for="plan-${panelCount}">Recommended Plan:</label>
+                <select id="plan-${panelCount}" name="plan-${panelCount}">
+                    <option value="">Select Industry and Engagement Level</option>
+                </select>
+            `;
+            container.appendChild(newPanel);
+            panelCount++;
+        });
+
+        document.getElementById('emailForm').addEventListener('submit', async (e) => {
+            e.preventDefault();
+            prospects = [];
+            for (let i = 0; i < panelCount; i++) {
+                prospects.push({
+                    email: document.getElementById(`email-${i}`).value,
+                    phone: document.getElementById(`phone-${i}`).value || undefined,
+                    industry: document.getElementById(`industry-${i}`).value,
+                    company_name: document.getElementById(`company_name-${i}`).value,
+                    contact_name: document.getElementById(`contact_name-${i}`).value,
+                    engagement_level: document.getElementById(`engagement_level-${i}`).value || undefined,
+                    plan: document.getElementById(`plan-${i}`).value || undefined
+                });
+            }
+
+            const formData = {
+                prospects,
+                company_info: document.getElementById('companyInfo').value,
+                representative: document.getElementById('representative').value,
+                insurance_plan: document.getElementById('insurancePlan').value || undefined
+            };
+
+            const responseDiv = document.getElementById('response');
+            responseDiv.textContent = 'Sending...';
+            try {
+                const res = await fetch('/details', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(formData),
+                });
+                const data = await res.json();
+                if (res.ok) {
+                    responseDiv.textContent = `Status: ${data.status ? 'Success' : 'Failed'}\nEmails Sent To: ${data.emails_sent_to.join(', ')}\n\nEmail Bodies:\n${data.bodies.join('\n\n')}`;
+                    responseDiv.classList.remove('error');
+                    updateCallProspectList();
+                } else {
+                    responseDiv.textContent = `Error: ${data.detail || 'Unknown error'}`;
+                    responseDiv.classList.add('error');
+                }
+            } catch (error) {
+                responseDiv.textContent = `Error: ${error.message}`;
+                responseDiv.classList.add('error');
+            }
+        });
+
+        function updateCallProspectList() {
+            const callProspect = document.getElementById('callProspect');
+            callProspect.innerHTML = '<option value="">Select a Prospect</option>';
+            prospects.forEach((p, i) => {
+                if (p.phone) {
+                    callProspect.innerHTML += `<option value="${i}">${p.contact_name} (${p.company_name}) - ${p.phone}</option>`;
+                }
+            });
+        }
+
+        async function fetchProspectsForCall() {
+            const responseDiv = document.getElementById('response');
+            responseDiv.textContent = 'Fetching prospects...';
+            try {
+                const res = await fetch('/get-prospects');
+                if (!res.ok) throw new Error(`HTTP error! Status: ${res.status}`);
+                const data = await res.json();
+                console.log('Fetched data:', data);
+        
+                const callProspect = document.getElementById('callProspect');
+                callProspect.innerHTML = '<option value="">Select a Prospect</option>';
+        
+                if (data.prospects && Array.isArray(data.prospects) && data.prospects.length > 0) {
+                    prospects = data.prospects;
+                    console.log('Prospects array:', prospects);
+                    let validProspects = 0;
+                    prospects.forEach((prospect, i) => {
+                        console.log(`Prospect ${i}:`, prospect); // Log each prospect
+                        if (prospect.phone_number) {
+                            callProspect.innerHTML += `<option value="${i}">${prospect.contact_name} (${prospect.company_name}) - ${prospect.phone_number}</option>`;
+                            validProspects++;
+                        }
+                    });
+                    responseDiv.textContent = `Fetched ${data.prospects.length} prospects, ${validProspects} with phone numbers.`;
+                } else {
+                    responseDiv.textContent = 'No prospects found.';
+                    console.log('No valid prospects in response');
+                }
+            } catch (error) {
+                responseDiv.textContent = `Error fetching prospects: ${error.message}`;
+                responseDiv.classList.add('error');
+                console.error('Fetch error:', error);
+            }
+        }
+
+        async function generateCallScript() {
+            const index = document.getElementById('callProspect').value;
+            if (!index) {
+                document.getElementById('callScript').textContent = '';
+                return;
+            }
+
+            const prospect = prospects[index];
+            const payload = {
+                email: prospect.email,
+                industry: prospect.industry,
+                company_name: prospect.company_name,
+                contact_name: prospect.contact_name,
+                engagement_level: prospect.engagement_level,
+                representative: document.getElementById('representative').value,
+                phone_number: prospect.phone || prospect.phone_number
+            };
+
+            const responseDiv = document.getElementById('response');
+            responseDiv.textContent = 'Generating script...';
+            try {
+                const res = await fetch('/call-script', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(payload)
+                });
+                const data = await res.json();
+                if (res.ok) {
+                    document.getElementById('callScript').textContent = data.script;
+                    responseDiv.textContent = '';
+                } else {
+                    responseDiv.textContent = `Error: ${data.detail}`;
+                    responseDiv.classList.add('error');
+                }
+            } catch (error) {
+                responseDiv.textContent = `Error: ${error.message}`;
+                responseDiv.classList.add('error');
+            }
+        }
+
+        async function logCallOutcome() {
+            const index = document.getElementById('callProspect').value;
+            const outcome = document.getElementById('callOutcome').value;
+            if (!index || !outcome) return;
+
+            const prospect = prospects[index];
+            const payload = {
+                email: prospect.email,
+                industry: prospect.industry,
+                company_name: prospect.company_name,
+                contact_name: prospect.contact_name,
+                engagement_level: prospect.engagement_level,
+                representative: document.getElementById('representative').value,
+                phone_number: prospect.phone || prospect.phone_number,
+                call_outcome: outcome
+            };
+
+            const responseDiv = document.getElementById('response');
+            responseDiv.textContent = 'Logging outcome...';
+            try {
+                const res = await fetch('/call-script', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(payload)
+                });
+                const data = await res.json();
+                if (res.ok) {
+                    document.getElementById('callScript').textContent = data.script + `\n\nLast Call Outcome: ${data.last_call_outcome}`;
+                    responseDiv.textContent = 'Call outcome logged.';
+                } else {
+                    responseDiv.textContent = `Error: ${data.detail}`;
+                    responseDiv.classList.add('error');
+                }
+            } catch (error) {
+                responseDiv.textContent = `Error: ${error.message}`;
+                responseDiv.classList.add('error');
+            }
+        }
+
+        async function makeCall() {
+            const index = document.getElementById('callProspect').value;
+            if (!index) {
+                document.getElementById('callScript').textContent = 'Please select a prospect.';
+                return;
+            }
+
+            const prospect = prospects[index];
+            const payload = {
+                email: prospect.email,
+                phone_number: prospect.phone || prospect.phone_number,
+                representative: document.getElementById('representative').value
+            };
+
+            const responseDiv = document.getElementById('response');
+            responseDiv.textContent = 'Calling...';
+            try {
+                const res = await fetch('/make-call', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(payload)
+                });
+                const data = await res.json();
+                if (res.ok) {
+                    responseDiv.textContent = `Call initiated: ${data.call_sid}\nScript: ${data.script}`;
+                } else {
+                    responseDiv.textContent = `Error: ${data.detail}`;
+                    responseDiv.classList.add('error');
+                }
+            } catch (error) {
+                responseDiv.textContent = `Error: ${error.message}`;
+                responseDiv.classList.add('error');
+            }
+        }
+    </script>
+</body>
+</html>
