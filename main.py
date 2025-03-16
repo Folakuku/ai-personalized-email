@@ -1,14 +1,14 @@
-from fastapi import FastAPI, Request, HTTPException
+from fastapi import FastAPI, UploadFile, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import HTMLResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 from dotenv import load_dotenv
 from langchain_groq import ChatGroq
-from sendgrid import SendGridAPIClient
-from sendgrid.helpers.mail import Mail
 from pydantic import BaseModel, EmailStr, Field, field_validator
-from typing import Literal
+from typing import Literal, Optional
 import os
+from io import StringIO
+import csv
 from typing import Optional, List
 import logging
 from bson.objectid import ObjectId
@@ -16,7 +16,7 @@ from contextlib import asynccontextmanager
 from datetime import datetime
 from mailer import send_email
 from model import email_chain
-from schemas import DetailRequest, DetailsRequest, CallScriptRequest, MakeCallRequest
+from schemas import DetailRequest, DetailsRequest, Prospect, CallScriptRequest, MakeCallRequest
 from db import ProspectModel, EmailHistoryModel, mongo_client
 
 logging.basicConfig(level=logging.INFO)
@@ -256,6 +256,107 @@ async def send_emails(request: DetailsRequest):
         email_bodies = []
 
         for prospect in prospects:
+            email = prospect.email.strip()
+            industry = prospect.industry
+            company_name = prospect.company_name
+            contact_name = prospect.contact_name
+            engagement_level = prospect.engagement_level
+            phone_number = prospect.phone_number
+
+            db_prospect = get_prospect(email)
+            if db_prospect:
+                industry_used = industry or db_prospect["industry"]
+                company_name_used = company_name or db_prospect["company_name"]
+                contact_name_used = contact_name or db_prospect["contact_name"]
+                engagement_level_used = engagement_level if engagement_level is not None else db_prospect[
+                    "engagement_level"]
+                phone_number_used = phone_number or db_prospect["phone_number"]
+            else:
+                industry_used, company_name_used, contact_name_used = industry, company_name, contact_name
+                engagement_level_used = engagement_level if engagement_level is not None else "Low"
+                phone_number_used = phone_number
+
+            save_or_update_prospect(email, industry_used, company_name_used,
+                                    contact_name_used, engagement_level_used, phone_number_used)
+
+            subject = {
+                "technology": {"Low": f"Protecting Your Innovations at {company_name_used}", "Medium": f"Next Steps for Risk Management at {company_name_used}", "High": f"Customized Insurance Solutions for {company_name_used}"},
+                "finance": {"Low": f"Secure Your Financial Future with {company_name_used}", "Medium": f"Protect Your Financial Firm’s Assets with {company_name_used}", "High": f"Tailored Security Solutions for {company_name_used}"},
+                "health": {"Low": f"Ensure Compliance at {company_name_used}", "Medium": f"Efficiency and Compliance for {company_name_used}", "High": f"Advanced Protection for {company_name_used}"}
+            }.get(industry_used.lower(), {"Low": "Sigma Insurance Marketing"})[engagement_level_used]
+
+            email_body = email_chain.invoke({
+                "industry": industry_used,
+                "company_name": company_name_used,
+                "contact_name": contact_name_used,
+                "engagement_level": engagement_level_used,
+                "company_info": company_info,
+                "representative": representative,
+                "subject": subject
+            })
+
+            send_email(to=[email], subject=subject, message=email_body)
+            emails_sent_to.append(email)
+            email_bodies.append(email_body)
+
+            # Save email history
+            EmailHistoryModel.insert_one({
+                "prospect_email": email,
+                "subject": subject,
+                "body": email_body,
+                "sent_at": datetime.now()
+            })
+
+            # Update interaction count
+            ProspectModel.update_one(
+                {"email": email},
+                {"$inc": {"interaction_count": 1}}
+            )
+
+        return {"status": True, "emails_sent_to": emails_sent_to, "bodies": email_bodies, "engagement_level": engagement_level_used}
+    except Exception as e:
+        logger.error(f"Error sending emails: {str(e)}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.post("/upload-csv")
+async def upload_prospects(file: UploadFile):
+    try:
+        # Read the uploaded file
+        contents = await file.read()
+        csv_string = contents.decode('utf-8')
+        csv_file = StringIO(csv_string)
+
+        # Parse CSV
+        reader = csv.DictReader(csv_file)
+
+        # Check required headers
+        required_headers = {'email', 'industry',
+                            'company_name', 'contact_name'}
+        if not required_headers.issubset(set(reader.fieldnames)):
+            raise HTTPException(
+                status_code=422,
+                detail=f"CSV must contain required headers: {required_headers}"
+            )
+
+        company_info = "Sigma Insurance specializes in providing customized insurance solutions for various industries."
+        representative = "Folahanmi Ojokuku"
+
+        emails_sent_to = []
+        email_bodies = []
+
+        # start=2 to account for header row
+        for row_num, row in enumerate(reader, start=2):
+            # Create Prospect instance (will validate automatically)
+            prospect = Prospect(
+                email=row['email'],
+                industry=row['industry'],
+                company_name=row['company_name'],
+                contact_name=row['contact_name'],
+                engagement_level=row.get('engagement_level', 'Low'),
+                phone_number=row.get('phone_number')
+            )
+
             email = prospect.email.strip()
             industry = prospect.industry
             company_name = prospect.company_name
